@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html ng-app="app">
+<head>
+  <meta charset="utf-8">
+  <title>Маппер категорий</title>
+  <link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.2/css/bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="https://cdn.rawgit.com/angular-ui/ui-select/master/dist/select.min.css">
+  <link rel="stylesheet" href="http://cdnjs.cloudflare.com/ajax/libs/selectize.js/0.8.5/css/selectize.bootstrap3.css">
+  <script type="text/javascript" src="https://cdn.rawgit.com/nodeca/js-yaml/master/dist/js-yaml.min.js"></script>
+  <script type="text/javascript" src="https://code.jquery.com/jquery-1.11.2.min.js"></script>
+  <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/angularjs/1.3.13/angular.min.js"></script>
+  <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/angularjs/1.3.13/angular-sanitize.min.js"></script>
+  <script type="text/javascript" src="https://cdn.rawgit.com/angular-ui/ui-select/master/dist/select.min.js"></script>
+  <script type="text/javascript">
+    angular.module('app', ['ui.select', 'ngSanitize']);
+
+    var app = angular.module('app');
+    app.controller('MainCtrl', function ($scope) {
+
+      $scope.shop = {};
+      $scope.flatCategories = [];
+      $scope.shopCategoriesSources = [];
+      $scope.filename = '';
+
+      $scope.shopCategories = [];
+      $scope.categories = [];
+
+      $scope.saveCategories = function () {
+        console.log('shop',$scope.shop, jsyaml.dump($scope.shop))
+        var text = jsyaml.dump($scope.shop);
+        var blob = new Blob([text], {type: 'text/yaml'});
+        var link = document.createElement('a');
+        link.download = $scope.filename || 'shop.yaml';
+        if (window.webkitURL != null) {
+          link.href = window.webkitURL.createObjectURL(blob);
+        } else {
+          link.href = window.URL.createObjectURL(blob);
+          link.onclick = function () {
+            $(link).remove();
+          };
+          link.style.display = "none";
+          document.body.appendChild(link);
+        }
+
+        link.click();
+      };
+
+      $scope.$watch('shop', function() {
+        $scope.shopCategoriesSources = $scope.shop.sources || [];
+      });
+      $scope.$watch('shopCategoriesSources', function () {
+        console.log('$scope.shopCategoriesSources', $scope.shopCategoriesSources)
+        $scope.flatShopCategories = flattenCategory($scope.shopCategoriesSources.reduce(function (res, item) {
+          res = res.concat(item.categories);
+          return res;
+        }, []));
+      });
+      $scope.$watch('categories', function () {
+        console.log('categories', $scope.categories)
+        console.log('$scope.categories', $scope.categories);
+        $scope.flatCategories = flattenCategory($scope.categories);
+      });
+
+      function flattenCategory (arr, namePrefix) {
+        namePrefix = namePrefix || '';
+        var res = [];
+        $.each(arr, function (k, v) {
+          var name = namePrefix + v.name;
+          res.push({
+            name: name,
+            original: v
+          });
+          if (v.children) {
+            res = res.concat(flattenCategory(v.children, name + '/'));
+          }
+        });
+        return res;
+      }
+
+    });
+
+    app.directive('yamlReader', function () {
+      return {
+        require: 'ngModel',
+        restrict: 'A',
+        scope: {
+          filename: '='
+        },
+        link: function (scope, element, attrs, ngModelCtrl) {
+          $(element).on('change', function() {
+            var file = this.files[0];
+            console.log("select file", this.files[0]);
+            var reader = new FileReader();
+            reader.onload = function () {
+              ngModelCtrl.$setViewValue(jsyaml.load(reader.result));
+              scope.$apply(function() {
+                scope.filename = file.name;
+              });
+            };
+            reader.readAsText(file);
+          });
+        }
+      };
+    });
+  </script>
+</head>
+<body ng-controller="MainCtrl">
+  <div class="container">
+  <table class="table table-striped">
+    <thead>
+      <tr>
+        <td>
+          Категории магазина
+          <input type="file" yaml-reader ng-model="shop" filename="filename"/>
+        </td>
+        <td>
+          Категории
+          <input type="file" yaml-reader ng-model="categories" filename="_"/>
+        </td>
+      </tr>
+    </thead>
+    <tbody>
+     <tr ng-repeat="shopCategory in flatShopCategories">
+       <td>{{shopCategory.name}} <b ng-show="shopCategory.original.count">{{shopCategory.original.count}}</b></td>
+       <td>
+         <ui-select ng-model="shopCategory.original.mapTo" theme="selectize" style="min-width: 300px;">
+          <ui-select-match placeholder="Выберите магазин...">{{$select.selected.original.name}}</ui-select-match>
+          <ui-select-choices repeat="category.original.name as category in flatCategories | filter:$select.search">
+            <div ng-bind-html="category.name | highlight: $select.search"></div>
+          </ui-select-choices>
+        </ui-select>
+       </td>
+     </tr>
+    </tbody>
+  </table>
+  <button class="btn btn-promary" type="button" ng-click="saveCategories()">Сохранить категории магазина</button>
+  </div>
+</body>
+</html>
