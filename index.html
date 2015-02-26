@@ -17,13 +17,13 @@
     var app = angular.module('app');
     app.controller('MainCtrl', function ($scope) {
 
-      $scope.shop = {};
+      $scope.shop = JSON.parse(localStorage.getItem('shop')) || {};
       $scope.flatCategories = [];
       $scope.shopCategoriesSources = [];
       $scope.filename = '';
 
       $scope.shopCategories = [];
-      $scope.categories = [];
+      $scope.categories = JSON.parse(localStorage.getItem('categories')) || [];
 
       $scope.saveCategories = function () {
         console.log('shop',$scope.shop, jsyaml.dump($scope.shop))
@@ -45,21 +45,37 @@
         link.click();
       };
 
+      $scope.onSelect = function () {
+        saveShop();
+      };
+
       $scope.$watch('shop', function() {
         $scope.shopCategoriesSources = $scope.shop.sources || [];
+        saveShop();
       });
       $scope.$watch('shopCategoriesSources', function () {
-        console.log('$scope.shopCategoriesSources', $scope.shopCategoriesSources)
         $scope.flatShopCategories = flattenCategory($scope.shopCategoriesSources.reduce(function (res, item) {
           res = res.concat(item.categories);
           return res;
         }, []));
       });
       $scope.$watch('categories', function () {
-        console.log('categories', $scope.categories)
-        console.log('$scope.categories', $scope.categories);
         $scope.flatCategories = flattenCategory($scope.categories);
+        saveCategories();
       });
+
+      function saveShop () {
+        if ($scope.shop.name) {
+          localStorage.setItem('shop', JSON.stringify($scope.shop));
+        }
+      }
+
+      function saveCategories () {
+        if ($scope.categories.length) {
+          localStorage.setItem('categories', JSON.stringify($scope.categories));
+        }
+      }
+
 
       function flattenCategory (arr, namePrefix) {
         namePrefix = namePrefix || '';
@@ -112,6 +128,7 @@
         <td>
           Категории магазина
           <input type="file" yaml-reader ng-model="shop" filename="filename"/>
+          <h3>{{shop.name}}</h3>
         </td>
         <td>
           Категории
@@ -121,12 +138,12 @@
     </thead>
     <tbody>
      <tr ng-repeat="shopCategory in flatShopCategories">
-       <td>{{shopCategory.name}} <b ng-show="shopCategory.original.count">{{shopCategory.original.count}}</b></td>
+       <td>{{::shopCategory.name}} <b ng-show="shopCategory.original.count">{{::shopCategory.original.count}}</b></td>
        <td>
-         <ui-select ng-model="shopCategory.original.mapTo" theme="selectize" style="min-width: 300px;">
-          <ui-select-match placeholder="Выберите магазин...">{{$select.selected.original.name}}</ui-select-match>
+         <ui-select ng-model="shopCategory.original.mapTo" theme="selectize" on-select="onSelect()" style="min-width: 300px;">
+          <ui-select-match placeholder="Выберите категорию...">{{$select.selected.original.name}}</ui-select-match>
           <ui-select-choices repeat="category.original.name as category in flatCategories | filter:$select.search">
-            <div ng-bind-html="category.name | highlight: $select.search"></div>
+            <div>{{::category.name}}</div>
           </ui-select-choices>
         </ui-select>
        </td>
