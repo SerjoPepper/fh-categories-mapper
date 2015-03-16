@@ -17,20 +17,26 @@
     var app = angular.module('app');
     app.controller('MainCtrl', function ($scope) {
 
-      $scope.shop = JSON.parse(localStorage.getItem('shop')) || {};
+      $scope.shopCategories = fetchStoringCategories('shopCategories')
+      $scope.categories = fetchStoringCategories('categories')
+
       $scope.flatCategories = [];
-      $scope.shopCategoriesSources = [];
-      $scope.filename = '';
+      $scope.flatShopCategories = [];
+      // название скачиваемого файла
+      $scope.filename = localStorage.getItem('filename') || '';
+      $scope.genders = {
+        '0': 'любой пол',
+        '1': 'женский',
+        '2': 'мужской',
+        '3': 'унисекс'
+      };
 
-      $scope.shopCategories = [];
-      $scope.categories = JSON.parse(localStorage.getItem('categories')) || [];
-
-      $scope.saveCategories = function () {
-        console.log('shop',$scope.shop, jsyaml.dump($scope.shop))
-        var text = jsyaml.dump($scope.shop);
+      $scope.dumpCategories = function () {
+        var categories = angular.copy($scope.shopCategories);
+        var text = jsyaml.dump(cleanShopCategories(categories));
         var blob = new Blob([text], {type: 'text/yaml'});
         var link = document.createElement('a');
-        link.download = $scope.filename || 'shop.yaml';
+        link.download = $scope.filename || 'shop-categories.yaml';
         if (window.webkitURL != null) {
           link.href = window.webkitURL.createObjectURL(blob);
         } else {
@@ -41,32 +47,39 @@
           link.style.display = "none";
           document.body.appendChild(link);
         }
-
         link.click();
       };
 
       $scope.onSelect = function () {
-        saveShop();
+        saveShopCategories();
       };
 
-      $scope.$watch('shop', function() {
-        $scope.shopCategoriesSources = $scope.shop.sources || [];
-        saveShop();
-      });
-      $scope.$watch('shopCategoriesSources', function () {
-        $scope.flatShopCategories = flattenCategory($scope.shopCategoriesSources.reduce(function (res, item) {
-          res = res.concat(item.categories);
-          return res;
-        }, []));
+      $scope.$watch('shopCategories', function () {
+        $scope.flatShopCategories = flattenCategory($scope.shopCategories);
+        $scope.flatShopCategories.forEach(function (category) {
+          category.original.mapTo = category.original.mapTo || [];
+        });
+        saveShopCategories();
+
       });
       $scope.$watch('categories', function () {
         $scope.flatCategories = flattenCategory($scope.categories);
         saveCategories();
       });
 
-      function saveShop () {
-        if ($scope.shop.name) {
-          localStorage.setItem('shop', JSON.stringify($scope.shop));
+      function fetchStoringCategories (key) {
+        var categories;
+        try {
+          categories = JSON.parse(localStorage.getItem(key));
+        } catch (e) {
+          console.error(e, e.stack);
+        }
+        return categories || [];
+      }
+
+      function saveShopCategories () {
+        if ($scope.shopCategories.length) {
+          localStorage.setItem('shopCategories', JSON.stringify($scope.shopCategories));
         }
       }
 
@@ -74,6 +87,18 @@
         if ($scope.categories.length) {
           localStorage.setItem('categories', JSON.stringify($scope.categories));
         }
+      }
+
+      function cleanShopCategories (categories) {
+        categories.forEach(function (category) {
+          if (category.mapTo && !category.mapTo.length) {
+            delete category.mapTo;
+          }
+          if (category.children && category.children.length) {
+            cleanShopCategories(category.children);
+          }
+        });
+        return categories;
       }
 
 
@@ -105,12 +130,12 @@
         link: function (scope, element, attrs, ngModelCtrl) {
           $(element).on('change', function() {
             var file = this.files[0];
-            console.log("select file", this.files[0]);
             var reader = new FileReader();
             reader.onload = function () {
               ngModelCtrl.$setViewValue(jsyaml.load(reader.result));
               scope.$apply(function() {
                 scope.filename = file.name;
+                localStorage.setItem('filename', scope.filename);
               });
             };
             reader.readAsText(file);
@@ -127,7 +152,7 @@
       <tr>
         <td>
           Категории магазина
-          <input type="file" yaml-reader ng-model="shop" filename="filename"/>
+          <input type="file" yaml-reader ng-model="shopCategories" filename="filename"/>
           <h3>{{shop.name}}</h3>
         </td>
         <td>
@@ -140,17 +165,23 @@
      <tr ng-repeat="shopCategory in flatShopCategories">
        <td>{{::shopCategory.name}} <b ng-show="shopCategory.original.count">{{::shopCategory.original.count}}</b></td>
        <td>
-         <ui-select ng-model="shopCategory.original.mapTo" theme="selectize" on-select="onSelect()" style="min-width: 300px;">
-          <ui-select-match placeholder="Выберите категорию...">{{$select.selected.original.name}}</ui-select-match>
-          <ui-select-choices repeat="category.original.name as category in flatCategories | filter:$select.search">
-            <div>{{::category.name}}</div>
-          </ui-select-choices>
-        </ui-select>
+          <div ng-repeat="map in shopCategory.original.mapTo">
+            <select class="form-control" ng-model="map.sex" ng-options="value*1 as title for (value, title) in genders" style="display: inline-block; width: 120px; vertical-align: top;">
+            </select>
+            <ui-select ng-model="map.name" theme="selectize" on-select="onSelect()" style="min-width: 300px; display: inline-block;">
+              <ui-select-match placeholder="Выберите категорию...">{{$select.selected.name}}</ui-select-match>
+              <ui-select-choices repeat="category.name as category in flatCategories | filter:{name: $select.search}">
+                <div>{{::category.name}}</div>
+              </ui-select-choices>
+            </ui-select>
+            <button class="btn btn-default" title="Удалить маппер" ng-click="shopCategory.original.mapTo.splice($index, 1); onSelect()" style="vertical-align: top;"><i class="glyphicon glyphicon-trash"></i></button>
+          </div>
+          <button class="btn btn-default" ng-click="shopCategory.original.mapTo.push({sex: 0, name: ''})"><i class="glyphicon glyphicon-plus"></i> Добавить маппер</button>
        </td>
      </tr>
     </tbody>
   </table>
-  <button class="btn btn-promary" type="button" ng-click="saveCategories()">Сохранить категории магазина</button>
+  <button class="btn btn-promary" type="button" ng-click="dumpCategories()">Сохранить категории магазина</button>
   </div>
 </body>
 </html>
